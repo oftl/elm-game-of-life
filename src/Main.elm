@@ -1,23 +1,21 @@
 import Html exposing (..)
 import Html.App as App
-
 import List exposing (..)
 import Time exposing (Time, second)
 import Random
-
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
+import Debug
 
 
 type alias Cell =
     { x : Int
     , y : Int
-    , n : Int  -- count of neighbour
-    , t : Int  -- tick when last changed
     }
 
+type alias Cells = List Cell
+
 type alias Universe = List Cell
-type alias NeighbourCount = List Cell
 
 type alias Rules =
     { born : List Int
@@ -32,6 +30,7 @@ type alias Model =
 
 type Msg = Tick Time
 
+
 main = App.program
     { init = init
     , update = update
@@ -40,24 +39,108 @@ main = App.program
     }
 
 
+-- remove duplicates from list
+--
+undupe : Cells -> Cells
+undupe cells =
+    List.foldl (\cell acc ->
+        if not (List.member cell acc) then
+            cell :: acc
+        else
+            acc
+    ) [] cells
+
+
+-- list of a cells' immediate neighbours
+--
+neighbours : Cell -> Cells
+neighbours cell =
+    let
+        offsets =
+            [ (-1, -1)
+            , (-1,  0)
+            , (-1,  1)
+            , ( 0, -1)
+         -- , ( 0,  0)
+            , ( 0,  1)
+            , ( 1, -1)
+            , ( 1,  0)
+            , ( 1,  1)
+            ]
+    in
+        List.map (\(x, y) ->
+            Cell (x + cell.x) (y + cell.y) -- -1 -1
+        ) offsets
+
+
+-- minuend - subtrahend = difference
+-- 1,2,3 minus 2 = 1,3
+-- a not in b
+--
+-- minus : Cells -> Cells -> Cells
+-- minus minuend subtrahend =
+--     List.filter (\cell ->
+--         not <| List.member cell subtrahend
+--     ) minuend
+
+
+-- intersection : Cells -> Cells -> Cells
+-- intersection a b =
+--     List.filter (\cell ->
+--         List.member cell b
+--     ) a
+
+
+alive_neighbours : Cell -> Universe -> Cells
+alive_neighbours cell universe =
+    List.filter (\cell ->
+        List.member cell universe
+    ) <| neighbours cell
+
+
+dead_neighbours : Cell -> Universe -> Cells
+dead_neighbours cell universe =
+    List.filter (\cell ->
+        not <| List.member cell universe
+    ) <| neighbours cell
+
 evolve : Rules -> Universe -> Universe
 evolve rules universe =
-    List.map (\cell ->
-        { cell | x = cell.x + 1, y = cell.y + 1}
-    ) universe
+    let
+        stay =
+            List.filter (\cell ->
+                List.member (List.length (alive_neighbours cell universe)) rules.stay
+            ) universe
 
+        dead = undupe (
+            List.concatMap (\cell ->
+                dead_neighbours cell universe
+            ) universe
+        )
+
+        born =
+            List.filter (\cell ->
+                List.member (List.length (alive_neighbours cell universe)) rules.born
+            ) dead
+
+    -- in sortWith (\a b -> [a b]) born ++ stay
+    in List.append stay (Debug.log "born" born)
 
 init : (Model, Cmd Msg)
 init =
     let
-        cell1 = Cell 5 5 1 0
-        cell2 = Cell 5 6 2 0
-        cell3 = Cell 5 7 1 0
+        cell1 = Cell 5 5    -- start of with a simple blinker to test
+        cell2 = Cell 5 6
+        cell3 = Cell 5 7
         universe = [ cell1, cell2, cell3 ]
         rules    = Rules [3] [2, 3]
         tick     = 0
 
     in (Model universe rules tick, Cmd.none)
+
+
+logUniverse : Universe -> Universe
+logUniverse universe = Debug.log "universe" universe
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
@@ -66,6 +149,7 @@ update msg model =
         Tick newTime ->
             let
                 m = { model
+                    -- | universe = logUniverse <| evolve model.rules model.universe
                     | universe = evolve model.rules model.universe
                     , tick = model.tick + 1
                     }
@@ -84,6 +168,7 @@ view model =
         cell_width = 2
         cell_height = 2
         cell_radius = 1
+
         cells = List.map (\cell ->
             Svg.circle
                 [ cx <| toString <| cell.x * cell_width + cell_width // 2
