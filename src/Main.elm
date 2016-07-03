@@ -60,7 +60,6 @@ undupe cells =
         else
             acc
     ) [] cells
-    -- ) [] <| Debug.log "undupe.cells" cells
 
 dupes : Cells -> Int
 dupes cells =
@@ -123,36 +122,22 @@ evolve : Rules -> Universe -> Universe
 evolve rules universe =
     let
         stay =
-        --stay = Debug.log "  DEBUG  stay" <|
             List.filter (\cell ->
                 List.member (List.length (alive_neighbours cell universe)) rules.stay
             ) universe
 
-        --dead' = undupe dead
-
-        --dead = Debug.log "  DEBUG  dead" <|
         -- only a dead cell with alive neighbours can be born
         -- but every dead cell has possibly up to eight alive neighbours
         -- therefore the dupes :-/
         dead = undupe <|
             List.concatMap (\cell ->
-                -- Debug.log "dead_neighbours" <| dead_neighbours cell universe
                 dead_neighbours cell universe
-            -- ) <| Debug.log "universe" universe
             ) universe
 
         born =
-        --born = Debug.log "  DEBUG  born" <|
             List.filter (\cell ->
                 List.member (List.length (alive_neighbours cell universe)) rules.born
             ) dead
-
---        x = Debug.log "DEBUG born" <| List.length born
---        y = Debug.log "DEBUG dead'" <| List.length dead'
---        z = Debug.log "DEBUG stay" <| List.length stay
---        a = Debug.log "DEBUG dupes born" <| dupes born
---        b = Debug.log "DEBUG dupes dead'" <| dupes dead'
---        c = Debug.log "DEBUG dupes stay" <| dupes stay
 
     -- in sortWith (\a b -> [a b]) born ++ stay
     in List.append stay born
