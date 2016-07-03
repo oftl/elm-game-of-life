@@ -6,12 +6,22 @@ import Random
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
 import Debug
+import Random
 
 
 type alias Cell =
     { x : Int
     , y : Int
     }
+
+type alias Dimension =
+    { x : Int
+    , y : Int
+    }
+
+type alias Density = Int
+
+type alias Area = Int
 
 type alias Cells = List Cell
 
@@ -26,6 +36,7 @@ type alias Model =
     { universe  : Universe
     , rules     : Rules
     , tick      : Int
+    , tick_interval : Int
     }
 
 type Msg = Tick Time
@@ -49,7 +60,11 @@ undupe cells =
         else
             acc
     ) [] cells
+    -- ) [] <| Debug.log "undupe.cells" cells
 
+dupes : Cells -> Int
+dupes cells =
+    List.length (cells) - List.length (undupe cells)
 
 -- list of a cells' immediate neighbours
 --
@@ -108,35 +123,90 @@ evolve : Rules -> Universe -> Universe
 evolve rules universe =
     let
         stay =
+        --stay = Debug.log "  DEBUG  stay" <|
             List.filter (\cell ->
                 List.member (List.length (alive_neighbours cell universe)) rules.stay
             ) universe
 
-        dead = undupe (
+        --dead' = undupe dead
+
+        --dead = Debug.log "  DEBUG  dead" <|
+        -- only a dead cell with alive neighbours can be born
+        -- but every dead cell has possibly up to eight alive neighbours
+        -- therefore the dupes :-/
+        dead = undupe <|
             List.concatMap (\cell ->
+                -- Debug.log "dead_neighbours" <| dead_neighbours cell universe
                 dead_neighbours cell universe
+            -- ) <| Debug.log "universe" universe
             ) universe
-        )
 
         born =
+        --born = Debug.log "  DEBUG  born" <|
             List.filter (\cell ->
                 List.member (List.length (alive_neighbours cell universe)) rules.born
             ) dead
 
+--        x = Debug.log "DEBUG born" <| List.length born
+--        y = Debug.log "DEBUG dead'" <| List.length dead'
+--        z = Debug.log "DEBUG stay" <| List.length stay
+--        a = Debug.log "DEBUG dupes born" <| dupes born
+--        b = Debug.log "DEBUG dupes dead'" <| dupes dead'
+--        c = Debug.log "DEBUG dupes stay" <| dupes stay
+
     -- in sortWith (\a b -> [a b]) born ++ stay
-    in List.append stay (Debug.log "born" born)
+    in List.append stay born
+
+randomCells : Random.Generator ( Int, Int ) -> Random.Seed -> number -> List Cell
+randomCells generator seed count =
+    case count of
+        0 ->
+            []
+        _ ->
+            let
+                rand = Random.step generator seed
+                ints = fst rand
+                seed' = snd rand
+            in
+                Cell (fst ints) (snd ints) :: (randomCells generator seed' (count - 1))
+
+-- density .. density of population in % of whole universe
+--            (100 % means every cell is alive)
+-- area ..... % of universe's area populated
+--
+bigBang : Dimension -> Density -> Area -> Universe
+bigBang dimension density area =
+    let
+        cell_count =
+            dimension.x * dimension.y * density // 100
+        x_range =
+            { upper = dimension.x // 2 - (dimension.x * area // 100 // 2)
+            , lower = dimension.x // 2 + (dimension.x * area // 100 // 2)
+            }
+        y_range =
+            { upper = dimension.y // 2 - (dimension.y * area // 100 // 2)
+            , lower = dimension.y // 2 + (dimension.y * area // 100 // 2)
+            }
+        seed =
+            Random.initialSeed 73843987428974   -- use current time dummy ;-)
+        generator =
+            Random.pair
+                (Random.int x_range.lower x_range.upper)
+                (Random.int y_range.lower y_range.upper)
+    in
+        randomCells generator seed cell_count -- List ((Int, Int), seed)
 
 init : (Model, Cmd Msg)
 init =
     let
-        cell1 = Cell 5 5    -- start of with a simple blinker to test
-        cell2 = Cell 5 6
-        cell3 = Cell 5 7
-        universe = [ cell1, cell2, cell3 ]
+        density  = 2
+        area     = 20
+        universe = bigBang (Dimension 50 50) density area
         rules    = Rules [3] [2, 3]
         tick     = 0
+        tick_interval = 250
 
-    in (Model universe rules tick, Cmd.none)
+    in (Model universe rules tick tick_interval, Cmd.none)
 
 
 logUniverse : Universe -> Universe
@@ -158,7 +228,7 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-  Time.every second Tick
+  Time.every (toFloat (model.tick_interval) * Time.millisecond) Tick
 
 
 view : Model -> Html Msg
