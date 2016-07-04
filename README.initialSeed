@@ -1,0 +1,4 @@
+The current time is used as the seed for Random.initialSeed. Task.perform requires the
+error and success handlers GetSeedError and GetSeedSuccess.
+
+Unfortunately Tasks are not possible (yet) in the REPL (see https://github.com/elm-lang/elm-repl/issues/77)
