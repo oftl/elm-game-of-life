@@ -161,10 +161,7 @@ evolve rules universe =
             ( List.length born )
             ( List.length universe )
 
-        universe = List.append stay born
-
-    in (universe, stats)
-
+    in (List.append stay born, stats)
 
 randomCells : Random.Generator ( Int, Int ) -> Random.Seed -> number -> List Cell
 randomCells generator seed count =
