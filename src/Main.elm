@@ -2,12 +2,13 @@ import Html exposing (..)
 import Html.App as App
 import List exposing (..)
 import Time exposing (Time, second)
+import Task
 import Random
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
+import Svg.Events
 import Debug
 import Random
-
 
 type alias Cell =
     { x : Int
@@ -32,14 +33,28 @@ type alias Rules =
     , stay : List Int
     }
 
+type alias Stats =
+    { cnt_stay  : Int
+    , cnt_dead  : Int
+    , cnt_born  : Int
+    , cnt_alive : Int
+    }
+
 type alias Model =
     { universe  : Universe
     , rules     : Rules
     , tick      : Int
     , tick_interval : Int
+    , stats     : Stats
     }
 
-type Msg = Tick Time
+type alias InitialSeed = Int
+
+type Msg =
+      Tick Time
+    | ResetUniverse
+    | GetSeedError String
+    | GetSeedSuccess (InitialSeed -> Universe) Float
 
 
 main = App.program
@@ -118,7 +133,8 @@ dead_neighbours cell universe =
         not <| List.member cell universe
     ) <| neighbours cell
 
-evolve : Rules -> Universe -> Universe
+
+evolve : Rules -> Universe -> (Universe, Stats)
 evolve rules universe =
     let
         stay =
@@ -139,8 +155,16 @@ evolve rules universe =
                 List.member (List.length (alive_neighbours cell universe)) rules.born
             ) dead
 
-    -- in sortWith (\a b -> [a b]) born ++ stay
-    in List.append stay born
+        stats = Stats
+            ( List.length stay )
+            ( List.length dead )
+            ( List.length born )
+            ( List.length universe )
+
+        universe = List.append stay born
+
+    in (universe, stats)
+
 
 randomCells : Random.Generator ( Int, Int ) -> Random.Seed -> number -> List Cell
 randomCells generator seed count =
@@ -159,8 +183,8 @@ randomCells generator seed count =
 --            (100 % means every cell is alive)
 -- area ..... % of universe's area populated
 --
-bigBang : Dimension -> Density -> Area -> Universe
-bigBang dimension density area =
+bigBang : Dimension -> Density -> Area -> Int -> Universe
+bigBang dimension density area seed =
     let
         cell_count =
             dimension.x * dimension.y * density // 100
@@ -172,26 +196,50 @@ bigBang dimension density area =
             { upper = dimension.y // 2 - (dimension.y * area // 100 // 2)
             , lower = dimension.y // 2 + (dimension.y * area // 100 // 2)
             }
-        seed =
-            Random.initialSeed 73843987428974   -- use current time dummy ;-)
+        seed' =
+            Random.initialSeed seed
         generator =
             Random.pair
                 (Random.int x_range.lower x_range.upper)
                 (Random.int y_range.lower y_range.upper)
     in
-        randomCells generator seed cell_count -- List ((Int, Int), seed)
+        randomCells generator seed' cell_count -- List ((Int, Int), seed)
+
+-- -- explicitly create one piece of glider for showcasing
+-- --
+-- bigBangGlider : Dimension -> Density -> Area -> Universe
+-- bigBangGlider dimension density area =
+--     [ Cell 11 10
+--     , Cell 12 11
+--     , Cell 10 12
+--     , Cell 11 12
+--     , Cell 12 12
+--     ]
+
 
 init : (Model, Cmd Msg)
 init =
     let
-        density  = 2
-        area     = 20
-        universe = bigBang (Dimension 50 50) density area
-        rules    = Rules [3] [2, 3]
-        tick     = 0
+        density     = 2
+        area        = 20
+        dimension   = Dimension 50 50
+        rules       = Rules [3] [2, 3]
+        tick        = 0
         tick_interval = 250
+        callback    = bigBang dimension density area
+        stats       = Stats 0 0 0 0
+        model       = Model [] rules tick tick_interval stats
+    in
+        (model, getSeed callback)
 
-    in (Model universe rules tick tick_interval, Cmd.none)
+
+getSeed : (InitialSeed -> Universe) -> Cmd Msg
+getSeed callback =
+    Task.perform GetSeedError (GetSeedSuccess callback) Time.now
+
+
+toInitialSeed : Float -> InitialSeed
+toInitialSeed seed = round seed
 
 
 logUniverse : Universe -> Universe
@@ -203,12 +251,28 @@ update msg model =
     case msg of
         Tick newTime ->
             let
+                evolve_res = evolve model.rules model.universe
+                universe   = fst evolve_res
+                stats      = snd evolve_res
+
                 m = { model
                     -- | universe = logUniverse <| evolve model.rules model.universe
-                    | universe = evolve model.rules model.universe
-                    , tick = model.tick + 1
+                    | universe = universe
+                    , stats    = stats
+                    , tick     = model.tick + 1
                     }
             in (m, Cmd.none)
+
+        ResetUniverse -> init
+
+        GetSeedError error ->
+            Debug.crash error
+
+        GetSeedSuccess callback newSeed ->
+            let
+                m = { model | universe = callback (toInitialSeed newSeed) }
+            in
+                (m, Cmd.none)
 
 
 subscriptions : Model -> Sub Msg
@@ -220,7 +284,7 @@ view : Model -> Html Msg
 view model =
 
     let
-        cell_width = 2
+        cell_width  = 2
         cell_height = 2
         cell_radius = 1
 
@@ -229,10 +293,53 @@ view model =
                 [ cx <| toString <| cell.x * cell_width + cell_width // 2
                 , cy <| toString <| cell.y * cell_height + cell_height // 2
                 , r <| toString cell_radius
+                , fill "blue"
                 ]
                 []
         ) model.universe
+
+        str_stay  = "stay: "  ++ toString model.stats.cnt_stay
+        str_born  = "born: "  ++ toString model.stats.cnt_born
+        str_dead  = "dead: "  ++ toString model.stats.cnt_dead
+        str_alive = "alive: " ++ toString model.stats.cnt_alive
+
+        controls = Svg.svg
+            [ width "640", height "100" ]
+            --
+            -- statistics
+            --
+            [ Svg.text'
+                [ x "250" , y "20" ]
+                [ Svg.text str_stay ]
+            , Svg.text'
+                [ x "250" , y "40" ]
+                [ Svg.text str_born ]
+            , Svg.text'
+                [ x "250" , y "60" ]
+                [ Svg.text str_dead ]
+            , Svg.text'
+                [ x "250" , y "80" ]
+                [ Svg.text str_alive ]
+            --
+            -- user-actions
+            --
+            , Svg.a
+                [ x "0"
+                , y "0"
+                , Svg.Events.onClick ResetUniverse
+                ]
+                [ Svg.text'
+                    [ fill "blue"
+                    , x "250"
+                    , y "100"
+                    ]
+                    [ Svg.text "reset universe " ]
+                ]
+            ]
+
+        content = cells ++ [ controls ]
     in
         Svg.svg
-            [ width "640", height "480", viewBox "0 0 120 120", color "yellow" ]
-            cells
+            -- [ width "250", height "250", viewBox "0 0 100 100" ]
+            [ width "350", height "350" ]
+            content
