@@ -1,5 +1,5 @@
 import Html exposing (..)
-import Html.App as App
+import Html as App
 import List exposing (..)
 import Time exposing (Time, second)
 import Task
@@ -171,10 +171,10 @@ randomCells generator seed count =
         _ ->
             let
                 rand = Random.step generator seed
-                ints = fst rand
-                seed' = snd rand
+                ints = Tuple.first rand
+                seed_ = Tuple.second rand
             in
-                Cell (fst ints) (snd ints) :: (randomCells generator seed' (count - 1))
+                Cell (Tuple.first ints) (Tuple.second ints) :: (randomCells generator seed_ (count - 1))
 
 -- density .. density of population in % of whole universe
 --            (100 % means every cell is alive)
@@ -193,14 +193,14 @@ bigBang dimension density area seed =
             { upper = dimension.y // 2 - (dimension.y * area // 100 // 2)
             , lower = dimension.y // 2 + (dimension.y * area // 100 // 2)
             }
-        seed' =
+        seed_ =
             Random.initialSeed seed
         generator =
             Random.pair
                 (Random.int x_range.lower x_range.upper)
                 (Random.int y_range.lower y_range.upper)
     in
-        randomCells generator seed' cell_count -- List ((Int, Int), seed)
+        randomCells generator seed_ cell_count -- List ((Int, Int), seed)
 
 -- -- explicitly create one piece of glider for showcasing
 -- --
@@ -232,7 +232,7 @@ init =
 
 getSeed : (InitialSeed -> Universe) -> Cmd Msg
 getSeed callback =
-    Task.perform GetSeedError (GetSeedSuccess callback) Time.now
+    Task.perform (GetSeedSuccess callback) Time.now
 
 
 toInitialSeed : Float -> InitialSeed
@@ -249,8 +249,8 @@ update msg model =
         Tick newTime ->
             let
                 evolve_res = evolve model.rules model.universe
-                universe   = fst evolve_res
-                stats      = snd evolve_res
+                universe   = Tuple.first evolve_res
+                stats      = Tuple.second evolve_res
 
                 m = { model
                     -- | universe = logUniverse <| evolve model.rules model.universe
@@ -305,16 +305,16 @@ view model =
             --
             -- statistics
             --
-            [ Svg.text'
+            [ Svg.text_
                 [ x "250" , y "20" ]
                 [ Svg.text str_stay ]
-            , Svg.text'
+            , Svg.text_
                 [ x "250" , y "40" ]
                 [ Svg.text str_born ]
-            , Svg.text'
+            , Svg.text_
                 [ x "250" , y "60" ]
                 [ Svg.text str_dead ]
-            , Svg.text'
+            , Svg.text_
                 [ x "250" , y "80" ]
                 [ Svg.text str_alive ]
             --
@@ -325,7 +325,7 @@ view model =
                 , y "0"
                 , Svg.Events.onClick ResetUniverse
                 ]
-                [ Svg.text'
+                [ Svg.text_
                     [ fill "blue"
                     , x "250"
                     , y "100"
